@@ -11,19 +11,6 @@ def snr(signal, recon):
     return 10*np.log10(ratio)
 
 
-def dcGC(t, f):
-    """Dynamic compressive gammachirp filter as defined by Irino,
-    with parameters from Park as used in Charles, Kressner, & Rozell.
-    The log term is regularized to log(t + 0.00001).
-    t : time in seconds, greater than 0
-    f : characteristic frequency in Hz
-    One but not both arguments may be numpy arrays.
-    """
-    ERB = 0.1039*f + 24.7
-    return t**3 * np.exp(-2*np.pi*1.14*ERB*t) * \
-        np.cos(2*np.pi*f*t + 0.979*np.log(t+0.000001))
-
-
 # adapted from scipy cookbook
 lowcut = 100
 highcut = 6000
@@ -47,7 +34,7 @@ class SignalSet:
 
     def __init__(self,
                  sample_rate=16000,
-                 data='../Data/speech_corpora/TIMIT/',
+                 data="/home/edodds/Data/TIMIT/",
                  min_length=800,
                  seg_length=80000):
         self.sample_rate = sample_rate
@@ -64,6 +51,7 @@ class SignalSet:
         files = os.listdir(folder)
         if 'cache.npy' in files:
             self.data = np.load(os.path.join(folder, 'cache.npy'))
+            self.ndata = len(self.data)
             print("Loaded data from cache.npy")
             return
         self.data = []
@@ -97,7 +85,8 @@ class SignalSet:
                 where = np.random.randint(low=0, high=excess)
                 segment = signal[where:where+self.seg_length]
                 not_found = False
-        segment /= np.max(np.abs(segment))  # norm by max as in Smith & Lewicki
+        # segment /= np.max(np.abs(segment))  # norm by max as in Smith & Lewicki
+        segment = (500*len(segment)/self.sample_rate) * segment / np.linalg.norm(segment) # norm 1 per 2ms
         return segment
 
     def get_batch(self, batch_size):
@@ -107,7 +96,7 @@ class SignalSet:
         signal /= np.max(signal)
         wavfile.write(filename, self.sample_rate, signal)
 
-    def tiled_plot(self, stims):
+    def tiled_plot(self, stims, trim=False):
         """Tiled plots of the given signals. Zeroth index is which signal.
         Kind of slow, expect about 10s for 100 plots."""
         nstim = stims.shape[0]
@@ -115,7 +104,39 @@ class SignalSet:
         plotcols = int(np.ceil(nstim/plotrows))
         f, axes = plt.subplots(plotrows, plotcols, sharex=True, sharey=True)
         for ii in range(nstim):
-            axes.flatten()[ii].plot(stims[ii])
+            this_stim = stims[ii]
+            if trim:
+                this_stim = self.trim(this_stim)
+            axes.flatten()[ii].plot(this_stim)
         f.subplots_adjust(hspace=0, wspace=0)
         plt.setp([a.get_xticklabels() for a in f.axes[:-1]], visible=False)
         plt.setp([a.get_yticklabels() for a in f.axes[:-1]], visible=False)
+
+    def trim(self, kernel, threshold=0.999):
+        """Trims kernel to keep a fraction of the total power given by threshold.
+        The center of the returned kernel is the point of the original kernel
+        at which the cumulative power crosses 0.5. Expects normalized kernel."""
+        squares = kernel**2
+        unfolded_cumulative = np.cumsum(squares)
+        midpoint = np.argmax(unfolded_cumulative > 0.5)
+        if midpoint == 0 or midpoint == len(kernel):
+            return kernel
+
+        first = squares[:midpoint][::-1]
+        latter = squares[midpoint:]
+        l_first = len(first)
+        l_latter = len(latter)
+        if l_first > l_latter:
+            latter = np.concatenate([latter, np.zeros([l_first-l_latter])])
+        elif l_latter > l_first:
+            first = np.concatenate([first, np.zeros([l_latter-l_first])])
+        folded = first + latter
+
+        cumulative = np.cumsum(folded)
+        boundary = np.argmax(cumulative > threshold)
+        if boundary < 1:
+            boundary = 1
+        start = midpoint-boundary
+        end = midpoint+boundary
+
+        return kernel[start:end]
