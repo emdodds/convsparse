@@ -2,28 +2,21 @@ import numpy as np
 import torch
 import torch.nn as nn
 import time
+import matplotlib.pyplot as plt
+import utils
 
 
 dtype = torch.float32
 
 
-def dcGC(t, f):
-    """Dynamic compressive gammachirp filter as defined by Irino,
-    with parameters from Park as used in Charles, Kressner, & Rozell.
-    The log term is regularized to log(t + 0.00001).
-    t : time in seconds, greater than 0
-    f : characteristic frequency in Hz
-    One but not both arguments may be numpy arrays.
-    """
-    ERB = 0.1039*f + 24.7
-    return t**3 * np.exp(-2*np.pi*1.14*ERB*t) * \
-        np.cos(2*np.pi*f*t + 0.979*np.log(t+0.000001))
-
-
 class ConvSparseNet():
-    def __init__(self, n_kernel=32, kernel_size=800, lam=0.4, n_iter=200, batch_size=32,
-                 inference_rate=0.5,
-                 weight_decay=0.01,
+    def __init__(self,
+                 n_kernel=32,
+                 kernel_size=800,
+                 lam=100,
+                 n_iter=200,
+                 batch_size=32,
+                 inference_rate=50,
                  initialization="minirandom",
                  seed_length=100,
                  device=torch.device("cuda:0")):
@@ -44,8 +37,6 @@ class ConvSparseNet():
         self.inference_rate = inference_rate
         self.lam = lam
         self.device = device
-
-        self.weight_decay = weight_decay
 
         weights = self.initial_filters(initialization, seed_length)
         weights = weights.reshape([1, n_kernel, kernel_size])
@@ -132,10 +123,8 @@ class ConvSparseNet():
             batch = batch.reshape([self.batch_size, 1, -1])
 
             acts, _ = self.infer(batch)
-
+            acts = acts.detach()
             training_loss = self.loss(batch, self.reconstruction(acts), acts)
-            # loss_with_reg = training_loss + self.weight_decay*torch.norm(self.weights, p=2)
-            # loss_with_reg.backward()
             training_loss.backward()
             trainer.step()
 
@@ -156,3 +145,71 @@ class ConvSparseNet():
                 print(f"loss on same batch after step: {training_loss.item():f}")
 
         return losses
+
+    def test_inference(self, signal, sample_rate=16000):
+        if len(signal.shape) == 0:
+            length = signal.shape[0]
+        else:
+            length = signal.shape[1]
+        acts, meta = self.infer(signal)
+        np_acts = np.squeeze(acts.detach().numpy())
+        signal = np.squeeze(signal)
+        excess = np_acts.shape[-1] - len(signal)
+        times = np.arange(length + excess) / sample_rate
+        plt.figure()
+        plt.subplot(3, 1, 1)
+        plt.plot(times, np.concatenate([signal,
+                                        np.zeros(excess)]))
+        plt.title('Original signal')
+        plt.subplot(3, 1, 2)
+        recon = np.squeeze(self.reconstruction(acts).detach().numpy())
+        plt.plot(times, np.concatenate([recon,
+                                        np.zeros(excess)]))
+        plt.title('Reconstruction')
+        plt.subplot(3, 1, 3)
+        utils.plot_spikegram(np_acts,
+                             sample_rate=sample_rate, markerSize=1)
+        print("Signal-noise ratio: {:f} dB".format(utils.snr(np.squeeze(signal), recon)))
+        return acts, meta
+
+    def revcorr(self, nstims=10, delay=100):
+        RFs = np.zeros((self.n_kernel, self.kernel_size+delay))
+        spikecounts = np.zeros(self.nunits)
+        for nn in range(nstims):
+            signal = np.random.normal(size=40000)
+            lsignal = signal.shape[0]
+            acts, _ = self.infer(signal)
+            recon = self.reconstruction(acts)
+            for tt in range(self.kernel_size, lsignal-delay):
+                segment = signal[tt-self.kernel_size:tt+delay]
+                RFs += np.outer(acts[:, tt], segment)
+                spikecounts += acts[:, tt]
+        RFs = RFs/(np.linalg.norm(RFs, axis=1)[:, None])
+        return RFs, spikecounts
+
+    # def fast_sort(self, measure="L0", plot=False, savestr=None):
+    #     """Sorts filters by moving average usage of specified type, or by center frequency.
+    #     Options for measure: L0, L1, f. L0 by default."""
+    #     if measure == "f" or measure == "frequency":
+    #         usages, _ = self.get_cf_and_bandwidth()
+    #     elif measure == "L1":
+    #         usages = self.L1acts
+    #     else:
+    #         usages = self.L0acts
+    #     sorter = np.argsort(usages)
+    #     self.sort(usages, sorter, plot, savestr)
+    #     return usages[sorter]
+
+    # def sort(self, usages, sorter, plot, savestr=None):
+    #     self.weights = self.weights[sorter]
+    #     self.L0acts = self.L0acts[sorter]
+    #     self.L1acts = self.L1acts[sorter]
+    #     self.L2acts = self.L2acts[sorter]
+    #     if plot:
+    #         plt.figure()
+    #         plt.plot(usages[sorter])
+    #         plt.title('L0 Usage')
+    #         plt.xlabel('Dictionary index')
+    #         plt.ylabel('Fraction of stimuli')
+    #         if savestr is not None:
+    #             plt.savefig(savestr, format='png', bbox_inches='tight')
