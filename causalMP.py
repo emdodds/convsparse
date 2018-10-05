@@ -29,23 +29,29 @@ class CausalMP(convsparsenet.ConvSparseNet):
         batch_size = signal.shape[0]
         acts = torch.zeros(batch_size,
                            self.n_kernel,
-                           l_signal+(self.kernel_size), #-1
-                           device=self.device)
-        resid = torch.cat([signal, torch.zeros(batch_size,
-                                               self.kernel_size-1,
+                           l_signal,
+                           device=self.device,
+                           requires_grad=False)
+        resid = torch.cat([signal, torch.zeros([batch_size,
+                                               self.kernel_size-1],
                                                device=self.device)],
                           dim=1)
 
         weights = self.weights.detach().reshape(self.n_kernel, -1)
-        for tt in range(self.kernel_size, resid.shape[1]+1):
-            segment = resid[:, tt-self.kernel_size:tt]
+        for tt in range(l_signal):
+            segment = resid[:, tt:tt+self.kernel_size]
             dots = torch.mm(segment, torch.t(weights))
             candidates = torch.argmax(torch.abs(dots), dim=1)
             spikes = dots[torch.arange(batch_size), candidates]
             # segnorm = torch.norm(segment[self.masks[candidates]])
-            spikes = (spikes > self.thresh).float()*spikes
-            acts[:, candidates, tt] += spikes # tt-1
-            resid[:, tt-self.kernel_size:tt] -= \
+            spikes = (torch.abs(spikes) > self.thresh).float()*spikes
+            acts[:, candidates, tt] += spikes
+            resid[:, tt:tt+self.kernel_size] -= \
                 spikes[:, None]*weights[candidates, :]
 
-        return acts, {"residual": resid}
+        padded_signal = torch.cat([signal, torch.zeros([batch_size,
+                                                       self.kernel_size-1],
+                                                       device=self.device)],
+                                  dim=1)
+        return acts, {"residual": resid,
+                      "reconstruction": padded_signal - resid}

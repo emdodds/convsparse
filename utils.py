@@ -38,21 +38,24 @@ def butter_bandpass_filter(data, lowcut, highcut, fs, order=5):
     return y
 
 
-def plot_spikegram(spikes, sample_rate, markerSize=.0001):
+def plot_spikegram(spikes, sample_rate, markerSize=.0001, ax=None):
     """adapted from https://github.com/craffel/spikegram-coding/blob/master/plotSpikeGram.py"""
     nkernels = spikes.shape[0]
     indices = np.transpose(np.nonzero(spikes))
     scalesKernelsAndOffsets = [(spikes[idx[0], idx[1]], idx[0], idx[1]) for idx in indices]
 
+    if ax is None:
+        fig, ax = plt.subplots(1, 1)
+
     for scale, kernel, offset in scalesKernelsAndOffsets:
         # Put a dot at each spike location.  Kernels on y axis.  Dot size corresponds to scale
-        plt.plot(offset/sample_rate, nkernels-kernel, 'k.',
+        ax.plot(offset/sample_rate, nkernels-kernel, 'k.',
                  markersize=markerSize*np.abs(scale))
-    plt.title("Spikegram")
-    plt.xlabel("Time (s)")
-    plt.ylabel("Kernel")
-    plt.axis([0.0, spikes.shape[1]/sample_rate, 0.0, nkernels])
-    plt.show()
+    ax.set_title("Spikegram")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Kernel")
+    ax.set_xlim([0.0, spikes.shape[1]/sample_rate])
+    ax.set_ylim([0.0, nkernels])
 
 
 def center_of_mass(signal):

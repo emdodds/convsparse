@@ -76,12 +76,20 @@ class ConvSparseNet():
         return filters.reshape(filters.shape+(1,))
 
     def loss(self, signal, recon, acts):
+        if recon.shape[-1] > signal.shape[-1]:
+            padding = torch.zeros(list(signal.shape[:-1]) +
+                                  [recon.shape[-1] - signal.shape[-1]])
+            signal = torch.cat([padding, signal], dim=-1)
         mse = torch.mean((signal-recon)**2)
         l1loss = torch.mean(torch.abs(acts))
         return torch.add(mse, self.lam*l1loss)
 
     def reconstruction(self, acts):
-        return nn.functional.conv1d(acts, self.weights)
+        """Return the stimulus reconstruction given by the convolution of
+        the current weights with the given activations. Notice this is a true
+        convolution, NOT a cross-correlation."""
+        return nn.functional.conv1d(acts, torch.flip(self.weights, [2]),
+                                    padding=self.kernel_size-1)
 
     def infer(self, signal):
         if not isinstance(signal, torch.Tensor):
@@ -92,7 +100,7 @@ class ConvSparseNet():
         batch_size = signal.shape[0]
         acts = torch.zeros(batch_size,
                            self.n_kernel,
-                           l_signal+(self.kernel_size - 1),
+                           l_signal,
                            device=self.device)
         acts.requires_grad = True
 
@@ -101,13 +109,15 @@ class ConvSparseNet():
         l1_means = []
         for ii in range(self.n_iter):
             optimizer.zero_grad()
-            total_loss = self.loss(signal, self.reconstruction(acts), acts)
+            recon = self.reconstruction(acts)
+            total_loss = self.loss(signal, recon, acts)
             total_loss.backward()
             losses.append(total_loss.item())
             l1_means.append(torch.mean(torch.abs(acts)).item())
             optimizer.step()
 
-        return acts, {'loss': losses, 'l1': l1_means}
+        return acts, {'loss': losses, 'l1': l1_means,
+                      'reconstruction': recon}
 
     def train(self, data, n_steps=1000, learning_rate=0.01, post_step_loss=False):
         trainer = torch.optim.SGD([self.weights], lr=learning_rate)
@@ -122,9 +132,10 @@ class ConvSparseNet():
             batch = torch.tensor(batch, device=self.device, dtype=dtype)
             batch = batch.reshape([self.batch_size, 1, -1])
 
-            acts, _ = self.infer(batch)
-            acts = acts.detach()
-            training_loss = self.loss(batch, self.reconstruction(acts), acts)
+            acts, meta = self.infer(batch)
+            # acts = acts.detach()
+            recon = self.reconstruction(acts)
+            training_loss = self.loss(batch, recon, acts)
             training_loss.backward()
             trainer.step()
 
@@ -147,29 +158,32 @@ class ConvSparseNet():
         return losses
 
     def test_inference(self, signal, sample_rate=16000):
-        if len(signal.shape) == 0:
+        if len(signal.shape) < 2:
             length = signal.shape[0]
         else:
             length = signal.shape[1]
         acts, meta = self.infer(signal)
-        np_acts = np.squeeze(acts.detach().numpy())
+
         signal = np.squeeze(signal)
-        excess = np_acts.shape[-1] - len(signal)
-        times = np.arange(length + excess) / sample_rate
-        plt.figure()
-        plt.subplot(3, 1, 1)
-        plt.plot(times, np.concatenate([signal,
-                                        np.zeros(excess)]))
-        plt.title('Original signal')
-        plt.subplot(3, 1, 2)
+        padded_signal = np.concatenate([signal, np.zeros(self.kernel_size-1)])
+        padded_length = len(padded_signal)
+        times = np.arange(padded_length) / sample_rate
+        fig, axes = plt.subplots(3, 1, sharex=True)
+        ax = axes[0]
+        ax.plot(times, padded_signal)
+        ax.set_title('Original signal')
+        ax = axes[1]
         recon = np.squeeze(self.reconstruction(acts).detach().numpy())
-        plt.plot(times, np.concatenate([recon,
-                                        np.zeros(excess)]))
-        plt.title('Reconstruction')
-        plt.subplot(3, 1, 3)
+        ax.plot(times, recon)
+        ax.set_title('Reconstruction')
+
+        np_acts = np.squeeze(acts.detach().numpy())
+        np_acts = np.concatenate([np.zeros([self.n_kernel, self.kernel_size-1]),
+                                  np_acts],
+                                 axis=1)
         utils.plot_spikegram(np_acts,
-                             sample_rate=sample_rate, markerSize=1)
-        print("Signal-noise ratio: {:f} dB".format(utils.snr(np.squeeze(signal), recon)))
+                             sample_rate=sample_rate, markerSize=1, ax=axes[2])
+        print("Signal-noise ratio: {:f} dB".format(utils.snr(padded_signal, recon)))
         return acts, meta
 
     def revcorr(self, nstims=10, delay=100):
