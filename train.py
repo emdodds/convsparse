@@ -1,31 +1,49 @@
-import signalset
-import convsparsenet as csn
 import numpy as np
 import torch
 import argparse
 import pathlib
+import json
 
+import signalset
+import convsparsenet as csn
+import causalMP
+# import matching_pursuit
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--seg_length', default=20000, type=int)
-parser.add_argument('--lam', default=100, type=float)
-parser.add_argument('--lr', default=0.001, type=float)
-parser.add_argument('--bs', default=4, type=int)
-parser.add_argument('--ks', default=800, type=int)
+parser.add_argument('--c', default=None, type=str)
+parser.add_argument('--device', default="cpu", type=str)
 args = parser.parse_args()
 
-DATA_FOLDER = "/home/edodds/Data/TIMIT/"
-EXP_DIR = "/home/edodds/convsparse/Results/"
-EXP_SUBDIR = EXP_DIR + "csntimit_lam{}_lr{}_ks{}-000".format(args.lam, args.lr, args.ks)
+if args.c is not None:
+    with open(args.c, 'r') as fh:
+        config = json.load(fh)
+else:
+    from config import config
 
-data = signalset.SignalSet(data=DATA_FOLDER, all_in_memory=False)
+data = signalset.SignalSet(data=config["data_folder"],
+                           all_in_memory=False)
 data.seg_length = args.seg_length
 
-net = csn.ConvSparseNet(inference_rate=50, n_iter=100, lam=args.lam,
-                        initialization="minirandom", seed_length=100,
-                        kernel_size=args.ks)
+if args.device == "gpu":
+    device = torch.device("cuda:0")
+else:
+    device = torch.device(args.device)
+
+if config["model"] == "csn":
+    net = csn.ConvSparseNet(inference_rate=50, n_iter=100,
+                            lam=config["sparseness_parameter"],
+                            initialization="minirandom", seed_length=100,
+                            kernel_size=config["kernel_size"],
+                            device=device)
+elif config["model"] == "causal":
+    net = causalMP.CausalMP(device=device,
+                            thresh=0.1, seed_length=800)
+else:
+    raise ValueError("Unsupported model specifiction: {}".format(config["model"]))
+
 net.batch_size = args.bs
 
+EXP_SUBDIR = config["experiment_folder"]
 pathlib.Path(EXP_SUBDIR).mkdir(parents=True, exist_ok=True)
 
 losses = []
