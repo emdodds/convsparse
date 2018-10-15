@@ -14,15 +14,19 @@ parser.add_argument('--c', default=None, type=str)
 parser.add_argument('--device', default="cpu", type=str)
 args = parser.parse_args()
 
+from config import config
 if args.c is not None:
     with open(args.c, 'r') as fh:
-        config = json.load(fh)
-else:
-    from config import config
+        specified = json.load(fh)
+    for key in config:
+        if key not in specified:
+            print("{} not specified, defaulting to: {}".format(key, config[key]))
+    config.update(specified)
 
 data = signalset.SignalSet(data=config["data_folder"],
-                           all_in_memory=False)
-data.seg_length = args.seg_length
+                           all_in_memory=False,
+                           norm_factor=config["signal_normalization"])
+data.seg_length = config["segment_length"]
 
 if args.device == "gpu":
     device = torch.device("cuda:0")
@@ -37,17 +41,21 @@ if config["model"] == "csn":
                             device=device)
 elif config["model"] == "causal":
     net = causalMP.CausalMP(device=device,
-                            thresh=0.1, seed_length=800)
+                            initialization="minirandom", seed_length=800,
+                            kernel_size=config["kernel_size"],
+                            lam=config["sparseness_parameter"])
 else:
     raise ValueError("Unsupported model specifiction: {}".format(config["model"]))
 
-net.batch_size = args.bs
+net.batch_size = config["batch_size"]
 
 EXP_SUBDIR = config["experiment_folder"]
 pathlib.Path(EXP_SUBDIR).mkdir(parents=True, exist_ok=True)
 
 losses = []
 for tt in range(1000):
-    losses = losses + net.train(data, n_steps=10, learning_rate=args.lr)
+    losses = losses + net.train(data, n_steps=10,
+                                learning_rate=config["learning_rate"])
+    print("Saving in {}".format(EXP_SUBDIR))
     np.save(EXP_SUBDIR+"/weights.npy", np.squeeze(net.weights.detach().cpu().numpy()))
     np.save(EXP_SUBDIR+"/loss.npy", losses)

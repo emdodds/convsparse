@@ -78,7 +78,8 @@ class ConvSparseNet():
     def loss(self, signal, recon, acts):
         if recon.shape[-1] > signal.shape[-1]:
             padding = torch.zeros(list(signal.shape[:-1]) +
-                                  [recon.shape[-1] - signal.shape[-1]])
+                                  [recon.shape[-1] - signal.shape[-1]],
+                                  device=self.device)
             signal = torch.cat([padding, signal], dim=-1)
         mse = torch.mean((signal-recon)**2)
         l1loss = torch.mean(torch.abs(acts))
@@ -133,7 +134,6 @@ class ConvSparseNet():
             batch = batch.reshape([self.batch_size, 1, -1])
 
             acts, meta = self.infer(batch)
-            # acts = acts.detach()
             recon = self.reconstruction(acts)
             training_loss = self.loss(batch, recon, acts)
             training_loss.backward()
@@ -173,11 +173,11 @@ class ConvSparseNet():
         ax.plot(times, padded_signal)
         ax.set_title('Original signal')
         ax = axes[1]
-        recon = np.squeeze(self.reconstruction(acts).detach().numpy())
+        recon = np.squeeze(self.reconstruction(acts).detach().cpu().numpy())
         ax.plot(times, recon)
         ax.set_title('Reconstruction')
 
-        np_acts = np.squeeze(acts.detach().numpy())
+        np_acts = np.squeeze(acts.detach().cpu().numpy())
         np_acts = np.concatenate([np.zeros([self.n_kernel, self.kernel_size-1]),
                                   np_acts],
                                  axis=1)

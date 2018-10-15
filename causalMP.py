@@ -8,19 +8,16 @@ dtype = convsparsenet.dtype
 
 class CausalMP(convsparsenet.ConvSparseNet):
 
-    def __init__(self,
-                 thresh=0.1,
-                 **kwargs):
-        """
-        Args:
-        thresh          : (float) threshold for activations
-
-        see ConvSparseNet for other parameters
-        """
-        self.thresh = thresh
+    def __init__(self, **kwargs):
         convsparsenet.ConvSparseNet.__init__(self, **kwargs)
+        self.thresh = self.lam
 
     def infer(self, signal):
+        with torch.no_grad():
+            everything = self._infer_no_grad(signal)
+        return everything
+
+    def _infer_no_grad(self, signal):
         n_signal = signal.shape[0]
         if not isinstance(signal, torch.Tensor):
             signal = torch.tensor(signal, device=self.device, dtype=dtype)

@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import time
 import convsparsenet
 
 dtype = torch.float32
@@ -9,45 +8,62 @@ dtype = torch.float32
 
 class MPNet(convsparsenet.ConvSparseNet):
 
+    def __init__(self, **kwargs):
+        convsparsenet.ConvSparseNet.__init__(self, **kwargs)
+        self.thresh = self.lam
+
     def infer(self, signal):
+        with torch.no_grad():
+            everything = self._infer_no_grad(signal)
+        return everything
+
+    def _infer_no_grad(self, signal):
         if not isinstance(signal, torch.Tensor):
             n_signal = len(signal)
             signal = torch.tensor(signal, device=self.device, dtype=dtype)
             signal = signal.reshape([n_signal, 1, -1])
         l_signal = signal.shape[-1]
         batch_size = signal.shape[0]
+
+        signal = torch.cat([signal, torch.zeros([batch_size, 1,
+                                                self.kernel_size-1],
+                                                device=self.device)],
+                           dim=2)
+        resid = torch.tensor(signal)
         acts = torch.zeros(batch_size,
                            self.n_kernel,
-                           l_signal+(self.kernel_size - 1),
+                           l_signal,
                            device=self.device)
-        raise NotImplementedError
 
-        # cond = True
-        # iter_count = 0
-        # while cond:
-        #     convs = 
-        #     convmags = np.abs(convs)
-        #     accept = False
-        #     while not accept:
-        #         winner = np.unravel_index(convmags.argmax(), convs.shape)
-        #         coeffswinner = [winner[0], winner[1], winner[3]]
-        #         coeffswinner[1] += self.lfilter - 1
-        #         coeffswinner = tuple(coeffswinner)
-        #         if coeffs[coeffswinner] == 0 or convmags[winner] == 0:
-        #             accept = True
-        #         else:
-        #             convmags[winner] = 0
+        cond = True
+        weights = self.weights.reshape([self.n_kernel, 1, -1])
+        errors = np.zeros([self.n_iter])
+        L1_means = np.zeros([self.n_iter])
+        for ii in range(self.n_iter):
+            # note this is a cross-correlation, not convolution
+            convs = nn.functional.conv1d(resid, weights)
+            convmags = torch.abs(convs)
+            reduced, spike_times = torch.max(convmags, dim=2)
+            candidates = torch.argmax(reduced, dim=1)
+            indexer = torch.arange(batch_size)
+            spikes = convs[indexer, candidates,
+                           spike_times[indexer, candidates]]
+            spikes = (torch.abs(spikes) > self.thresh).float()*spikes
 
-        #     spike = convs[winner]
-        #     iter_count += 1
-        #     if np.abs(spike) < self.min_spike or iter_count > self.max_iter:
-        #         cond = False
-        #     if cond:
-        #         coeffs[coeffswinner] = convs[winner]
-        #         feed_dict = {d['x']: signal,
-        #                      d['coeffs']: coeffs}
-        #         resid, mse, xhat = sess.run([d['resid'], d['mse'], d['xhat']],
-        #                                     feed_dict=feed_dict)
-        #         errors.append(mse)
+            acts[indexer, candidates,
+                 spike_times[indexer, candidates]] += spikes
+            recon = self.reconstruction(acts)
+            resid = signal - recon
 
-            return acts, {'loss': losses, 'l1': l1_means}
+            mse = torch.mean((signal-recon)**2)
+            l1loss = torch.mean(torch.abs(acts))
+            errors[ii] = mse.detach().cpu().numpy()
+            L1_means[ii] = l1loss.detach().cpu().numpy()
+
+            # print("{:4d}     mse: {:f}     l1: {:f}".format(ii, mse, l1loss))
+
+            if torch.all(spikes == 0):
+                break
+
+        return acts, {'mse': errors, 'l1': L1_means,
+                      'reconstruction': recon}
