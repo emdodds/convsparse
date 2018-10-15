@@ -7,7 +7,7 @@ import json
 import signalset
 import convsparsenet as csn
 import causalMP
-# import matching_pursuit
+import matching_pursuit as mp
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--c', default=None, type=str)
@@ -44,6 +44,11 @@ elif config["model"] == "causal":
                             initialization="minirandom", seed_length=800,
                             kernel_size=config["kernel_size"],
                             lam=config["sparseness_parameter"])
+elif config["model"] == "mp":
+    net = mp.MPNet(device=device, seed_length=100, n_iter=2000, 
+                   lam=config["sparseness_parameter"],
+                   initialization="minirandom",
+                   kernel_size=config["kernel_size"])
 else:
     raise ValueError("Unsupported model specifiction: {}".format(config["model"]))
 
