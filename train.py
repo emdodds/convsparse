@@ -11,7 +11,7 @@ import matching_pursuit as mp
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--c', default=None, type=str)
-parser.add_argument('--device', default="cpu", type=str)
+parser.add_argument('--device', default="gpu", type=str)
 args = parser.parse_args()
 
 from config import config
@@ -57,10 +57,20 @@ net.batch_size = config["batch_size"]
 EXP_SUBDIR = config["experiment_folder"]
 pathlib.Path(EXP_SUBDIR).mkdir(parents=True, exist_ok=True)
 
-losses = []
+try:
+    net.load(EXP_SUBDIR)
+    print("Loaded from {}".format(EXP_SUBDIR))
+    losses = np.load(EXP_SUBDIR + "/loss.npy")
+except FileNotFoundError:
+    losses = []
+    print("Training from scratch.")
+
+steps_between = 10
 for tt in range(1000):
-    losses = losses + net.train(data, n_steps=10,
-                                learning_rate=config["learning_rate"])
+    losses = losses + net.train(data, n_steps=steps_between,
+                                learning_rate=config["learning_rate"],
+                                optimizer=config["optimizer"],
+                                step_count=len(losses))
     print("Saving in {}".format(EXP_SUBDIR))
     np.save(EXP_SUBDIR+"/weights.npy", np.squeeze(net.weights.detach().cpu().numpy()))
     np.save(EXP_SUBDIR+"/loss.npy", losses)

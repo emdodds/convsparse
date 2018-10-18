@@ -10,7 +10,7 @@ class MPNet(convsparsenet.ConvSparseNet):
 
     def __init__(self, **kwargs):
         convsparsenet.ConvSparseNet.__init__(self, **kwargs)
-        self.thresh = self.lam
+        self.thresh = torch.ones(self.n_kernel, device=self.device)*self.lam
 
     def infer(self, signal):
         with torch.no_grad():
@@ -48,7 +48,7 @@ class MPNet(convsparsenet.ConvSparseNet):
             indexer = torch.arange(batch_size)
             spikes = convs[indexer, candidates,
                            spike_times[indexer, candidates]]
-            spikes = (torch.abs(spikes) > self.thresh).float()*spikes
+            spikes = (torch.abs(spikes) > self.thresh[candidates]).float()*spikes
 
             acts[indexer, candidates,
                  spike_times[indexer, candidates]] += spikes
@@ -67,3 +67,13 @@ class MPNet(convsparsenet.ConvSparseNet):
 
         return acts, {'mse': errors, 'l1': L1_means,
                       'reconstruction': recon}
+
+    def extra_updates(self, acts, meta):
+        """Lower thresholds for dead units."""
+        L1_means = torch.mean(torch.abs(acts), dim=-1)
+        L1_means = torch.mean(L1_means, dim=0)
+        highest = torch.max(L1_means)
+        too_low = L1_means < highest/10
+        self.thresh[too_low] *= 0.95
+        plenty = L1_means > 0.5*highest
+        self.thresh[plenty] = self.lam

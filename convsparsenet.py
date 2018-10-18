@@ -40,7 +40,8 @@ class ConvSparseNet():
 
         weights = self.initial_filters(initialization, seed_length)
         weights = weights.reshape([1, n_kernel, kernel_size])
-        self.weights = torch.tensor(weights, dtype=dtype, device=self.device, requires_grad=True)
+        self.weights = torch.tensor(weights, dtype=dtype, 
+                                    device=self.device, requires_grad=True)
 
     def initial_filters(self, initialization="minirandom", seed_length=100):
         """If 1D, Return either a set of gammachirp filters or random filters,
@@ -120,9 +121,16 @@ class ConvSparseNet():
         return acts, {'loss': losses, 'l1': l1_means,
                       'reconstruction': recon}
 
-    def train(self, data, n_steps=1000, learning_rate=0.01, post_step_loss=False):
-        trainer = torch.optim.SGD([self.weights], lr=learning_rate)
-                                  #momentum=0.9, nesterov=True)
+    def train(self, data, n_steps=1000,
+              learning_rate=0.01, post_step_loss=False,
+              optimizer='SGD', step_count=0):
+        if optimizer == "SGD":
+            trainer = torch.optim.SGD([self.weights], lr=learning_rate)
+        elif optimizer == "momentum":
+            trainer = torch.optim.SGD([self.weights], lr=learning_rate,
+                                      momentum=0.9, nesterov=True)
+        elif optimizer == "Adam":
+            trainer = torch.optim.Adam([self.weights], lr=learning_rate)
 
         losses = []
         current_time = time.time()
@@ -139,6 +147,8 @@ class ConvSparseNet():
             training_loss.backward()
             trainer.step()
 
+            self.extra_updates(acts, meta)
+
             with torch.no_grad():
                 self.weights /= torch.norm(self.weights, p=2,
                                            dim=-1, keepdim=True)
@@ -147,7 +157,8 @@ class ConvSparseNet():
             new_time = time.time()
             elapsed = new_time - current_time
             current_time = new_time
-            print(f"step: {step:5d}   loss: {loss_number:f}    elapsed: {elapsed:f} sec")
+            print(f"step: {(step + step_count):5d}   "
+                  "loss: {loss_number:f}    elapsed: {elapsed:f} sec")
             losses.append(loss_number)
 
             if post_step_loss:
@@ -156,6 +167,9 @@ class ConvSparseNet():
                 print(f"loss on same batch after step: {training_loss.item():f}")
 
         return losses
+
+    def extra_updates(self, acts, meta):
+        pass
 
     def test_inference(self, signal, sample_rate=16000):
         if len(signal.shape) < 2:
@@ -200,6 +214,11 @@ class ConvSparseNet():
                 spikecounts += acts[:, tt]
         RFs = RFs/(np.linalg.norm(RFs, axis=1)[:, None])
         return RFs, spikecounts
+
+    def load(self, path):
+        weights = np.load(path + "/weights.npy")
+        self.weights = torch.tensor(weights, dtype=dtype,
+                                    device=self.device, requires_grad=True)
 
     # def fast_sort(self, measure="L0", plot=False, savestr=None):
     #     """Sorts filters by moving average usage of specified type, or by center frequency.
