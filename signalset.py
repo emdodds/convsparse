@@ -61,6 +61,8 @@ class SignalSet:
             signal = signal/signal.std()
             signal = butter_bandpass_filter(signal, lowcut, highcut,
                                             self.sample_rate, order=5)
+        if self.norm_factor <= 0:
+            signal /= np.max(signal)
         return signal
 
     def load_from_folder(self, folder="/home/edodds/Data/TIMIT/", cache=True):
@@ -98,8 +100,8 @@ class SignalSet:
                 where = np.random.randint(low=0, high=excess)
                 segment = signal[where:where+self.seg_length]
                 not_found = False
-        # segment /= np.max(np.abs(segment))  # norm by max as in Smith & Lewicki
-        segment = (self.norm_factor*len(segment)/self.sample_rate) * segment / np.linalg.norm(segment)
+        if self.norm_factor > 0:
+            segment = (self.norm_factor*len(segment)/self.sample_rate) * segment / np.linalg.norm(segment)
         return segment
 
     def get_batch(self, batch_size):

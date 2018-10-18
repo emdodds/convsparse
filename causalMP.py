@@ -18,7 +18,7 @@ class CausalMP(convsparsenet.ConvSparseNet):
         return everything
 
     def _infer_no_grad(self, signal):
-        n_signal = signal.shape[0]
+        n_signal = signal.shape[0] if len(signal.shape) > 1 else 1
         if not isinstance(signal, torch.Tensor):
             signal = torch.tensor(signal, device=self.device, dtype=dtype)
         signal = signal.reshape([n_signal, -1])

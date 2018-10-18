@@ -123,7 +123,8 @@ class ConvSparseNet():
 
     def train(self, data, n_steps=1000,
               learning_rate=0.01, post_step_loss=False,
-              optimizer='SGD', step_count=0):
+              optimizer='SGD', step_count=0,
+              divide_out_signal_power=False):
         if optimizer == "SGD":
             trainer = torch.optim.SGD([self.weights], lr=learning_rate)
         elif optimizer == "momentum":
@@ -144,6 +145,8 @@ class ConvSparseNet():
             acts, meta = self.infer(batch)
             recon = self.reconstruction(acts)
             training_loss = self.loss(batch, recon, acts)
+            if divide_out_signal_power:
+                training_loss /= torch.var(batch)
             training_loss.backward()
             trainer.step()
 

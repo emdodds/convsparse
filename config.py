@@ -6,7 +6,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--load', default=None, type=str)
 parser.add_argument('--seg_length', default=20000, type=int)
 parser.add_argument('--lam', default=0.1, type=float)
-parser.add_argument('--lr', default=0.1, type=float)
+parser.add_argument('--lr', default=0.01, type=float)
+parser.add_argument('--change_lr', default=1000, type=int)
 parser.add_argument('--bs', default=4, type=int)
 parser.add_argument('--ks', default=800, type=int)
 parser.add_argument('--model', default="mp", type=str)
@@ -14,7 +15,7 @@ parser.add_argument('--optim', default='Adam', type=str)
 args = parser.parse_args()
 
 EXP_DIR = "/home/edodds/convsparse/Experiments/"
-EXP_SUBDIR = EXP_DIR + "{}timit_lam{}_lr{}_ks{}-{}-000".format(args.model,
+EXP_SUBDIR = EXP_DIR + "{}timit_lam{}_lr{}_ks{}-{}-002".format(args.model,
                                                                args.lam,
                                                                args.lr,
                                                                args.ks,
@@ -26,16 +27,22 @@ if args.load is not None:
 else:
     config = {}
 
+if args.change_lr > 0:
+    schedule = {"steps": [0, args.change_lr], "rates": [args.lr, args.lr/10]}
+else:
+    schedule = {"steps": [0], "rates": [args.lr]}
+
 config.update({"data_folder": "/home/edodds/Data/TIMIT/",
                "experiment_folder": EXP_SUBDIR,
                "model": args.model,
                "segment_length": args.seg_length,
                "sparseness_parameter": args.lam,
-               "learning_rate": args.lr,
+               "learning_schedule": schedule,
                "optimizer": args.optim,
                "batch_size": args.bs,
                "kernel_size": args.ks,
-               "signal_normalization": 20})
+               "signal_normalization": 0,
+               "divide_out_signal_power": True})
 
 pathlib.Path(EXP_SUBDIR).mkdir(parents=True, exist_ok=True)
 json_file = EXP_SUBDIR+"/config.json"
