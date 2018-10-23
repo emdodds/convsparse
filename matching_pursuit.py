@@ -77,3 +77,11 @@ class MPNet(convsparsenet.ConvSparseNet):
         self.thresh[too_low] *= 0.95
         plenty = L1_means > 0.5*highest
         self.thresh[plenty] = self.lam
+
+    def loss(self, signal, recon, acts):
+        padded_signal = \
+            torch.cat([signal, torch.zeros([signal.shape[0], 1,
+                                            self.kernel_size-1],
+                                           device=self.device)],
+                      dim=2)
+        return torch.mean((padded_signal-recon)**2)

@@ -22,7 +22,7 @@ def get_rate(schedule, step):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--c', default=None, type=str)
-parser.add_argument('--device', default="gpu", type=str)
+parser.add_argument('--device', default="cpu", type=str)
 args = parser.parse_args()
 
 from config import config
@@ -71,7 +71,7 @@ pathlib.Path(EXP_SUBDIR).mkdir(parents=True, exist_ok=True)
 try:
     net.load(EXP_SUBDIR)
     print("Loaded from {}".format(EXP_SUBDIR))
-    losses = np.load(EXP_SUBDIR + "/loss.npy")
+    losses = list(np.load(EXP_SUBDIR + "/loss.npy"))
 except FileNotFoundError:
     losses = []
     print("Training from scratch.")

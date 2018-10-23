@@ -161,7 +161,7 @@ class ConvSparseNet():
             elapsed = new_time - current_time
             current_time = new_time
             print(f"step: {(step + step_count):5d}   "
-                  "loss: {loss_number:f}    elapsed: {elapsed:f} sec")
+                  f"loss: {loss_number:f}    elapsed: {elapsed:f} sec")
             losses.append(loss_number)
 
             if post_step_loss:
@@ -220,6 +220,7 @@ class ConvSparseNet():
 
     def load(self, path):
         weights = np.load(path + "/weights.npy")
+        weights = weights.reshape([1, self.n_kernel, self.kernel_size])
         self.weights = torch.tensor(weights, dtype=dtype,
                                     device=self.device, requires_grad=True)
 

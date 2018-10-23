@@ -1,15 +1,15 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import convsparsenet
+import convsparsenet as csn
 
-dtype = convsparsenet.dtype
+dtype = csn.dtype
 
 
-class CausalMP(convsparsenet.ConvSparseNet):
+class CausalMP(csn.ConvSparseNet):
 
     def __init__(self, **kwargs):
-        convsparsenet.ConvSparseNet.__init__(self, **kwargs)
+        csn.ConvSparseNet.__init__(self, **kwargs)
         self.thresh = self.lam
 
     def infer(self, signal):
@@ -42,7 +42,7 @@ class CausalMP(convsparsenet.ConvSparseNet):
             spikes = dots[torch.arange(batch_size), candidates]
             # segnorm = torch.norm(segment[self.masks[candidates]])
             spikes = (torch.abs(spikes) > self.thresh).float()*spikes
-            acts[:, candidates, tt] += spikes
+            acts[torch.arange(batch_size), candidates, tt] += spikes
             resid[:, tt:tt+self.kernel_size] -= \
                 spikes[:, None]*weights[candidates, :]
 
@@ -52,3 +52,11 @@ class CausalMP(convsparsenet.ConvSparseNet):
                                   dim=1)
         return acts, {"residual": resid,
                       "reconstruction": padded_signal - resid}
+
+    def loss(self, signal, recon, acts):
+        padded_signal = \
+            torch.cat([signal, torch.zeros([signal.shape[0], 1,
+                                            self.kernel_size-1],
+                                           device=self.device)],
+                      dim=2)
+        return torch.mean((padded_signal-recon)**2)
