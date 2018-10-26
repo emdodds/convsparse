@@ -54,7 +54,8 @@ elif config["model"] == "causal":
     net = causalMP.CausalMP(device=device,
                             initialization="minirandom", seed_length=800,
                             kernel_size=config["kernel_size"],
-                            lam=config["sparseness_parameter"])
+                            lam=config["sparseness_parameter"],
+                            normed_thresh=config["normed_thresh"])
 elif config["model"] == "mp":
     net = mp.MPNet(device=device, seed_length=100, n_iter=2000, 
                    lam=config["sparseness_parameter"],

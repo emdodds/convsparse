@@ -77,11 +77,10 @@ class ConvSparseNet():
         return filters.reshape(filters.shape+(1,))
 
     def loss(self, signal, recon, acts):
-        if recon.shape[-1] > signal.shape[-1]:
-            padding = torch.zeros(list(signal.shape[:-1]) +
-                                  [recon.shape[-1] - signal.shape[-1]],
-                                  device=self.device)
-            signal = torch.cat([padding, signal], dim=-1)
+        padding = torch.zeros(list(signal.shape[:-1]) +
+                              [recon.shape[-1] - signal.shape[-1]],
+                              device=self.device)
+        signal = torch.cat([signal, padding], dim=-1)
         mse = torch.mean((signal-recon)**2)
         l1loss = torch.mean(torch.abs(acts))
         return torch.add(mse, self.lam*l1loss)

@@ -1,50 +1,46 @@
-import argparse
 import json
 import pathlib
+import os
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--load', default=None, type=str)
-parser.add_argument('--seg_length', default=20000, type=int)
-parser.add_argument('--lam', default=0.8, type=float)
-parser.add_argument('--lr', default=0.01, type=float)
-parser.add_argument('--change_lr', default=1000, type=int)
-parser.add_argument('--bs', default=1, type=int)
-parser.add_argument('--ks', default=800, type=int)
-parser.add_argument('--model', default="causal", type=str)
-parser.add_argument('--optim', default='Adam', type=str)
-args = parser.parse_args()
+model = "causal"
+seg_length = 20000
+lam = float(os.environ['lam'])
+lr = 0.01
+change_lr = 1000
+bs = 4
+ks = 800
+optim = "Adam"
+nthresh = float(os.environ['nthresh'])
 
-BASE_DIR = "/mnt/c/Users/Eric/Documents/Berkeley/Research/Neuroscience/Sparse coding/"
+# BASE_DIR = "/mnt/c/Users/Eric/Documents/Berkeley/Research/Neuroscience/Sparse coding/"
+BASE_DIR = "/global/home/users/edodds/"
 EXP_DIR = BASE_DIR + "convsparse/Experiments/" #/home/edodds/convsparse/Experiments/"
-EXP_SUBDIR = EXP_DIR + "{}timit_lam{}_lr{}_ks{}-{}-000".format(args.model,
-                                                               args.lam,
-                                                               args.lr,
-                                                               args.ks,
-                                                               args.optim)
+EXP_SUBDIR = EXP_DIR + "{}timit_lam{}_lr{}_ks{}-nt{}-000".format(model,
+                                                                 lam,
+                                                                 lr,
+                                                                 ks,
+                                                                 nthresh)
 
-if args.load is not None:
-    with open(args.load, 'r') as fh:
-        config = json.load(fh)
+config = {}
+
+if change_lr > 0:
+    schedule = {"steps": [0, change_lr], "rates": [lr, lr/10]}
 else:
-    config = {}
+    schedule = {"steps": [0], "rates": [lr]}
 
-if args.change_lr > 0:
-    schedule = {"steps": [0, args.change_lr], "rates": [args.lr, args.lr/10]}
-else:
-    schedule = {"steps": [0], "rates": [args.lr]}
-
-DATA_DIR = BASE_DIR + "audition/Data/speech_corpora/TIMIT"
+DATA_DIR = BASE_DIR + "audition/Data/TIMIT/"
 config.update({"data_folder": DATA_DIR,#"/home/edodds/Data/TIMIT/",
                "experiment_folder": EXP_SUBDIR,
-               "model": args.model,
-               "segment_length": args.seg_length,
-               "sparseness_parameter": args.lam,
+               "model": model,
+               "segment_length": seg_length,
+               "sparseness_parameter": lam,
                "learning_schedule": schedule,
-               "optimizer": args.optim,
-               "batch_size": args.bs,
-               "kernel_size": args.ks,
+               "optimizer": optim,
+               "batch_size": bs,
+               "kernel_size": ks,
                "signal_normalization": 0,
-               "divide_out_signal_power": True})
+               "divide_out_signal_power": True,
+               "normed_thresh": nthresh})
 
 pathlib.Path(EXP_SUBDIR).mkdir(parents=True, exist_ok=True)
 json_file = EXP_SUBDIR+"/config.json"
