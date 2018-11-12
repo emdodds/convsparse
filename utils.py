@@ -94,14 +94,18 @@ def skewness(signal):
     return sum(((np.arange(len(signal)) - com)/len(signal))**3 * signal**2)
 
 
-def cf_bandwidth_plot(phi, bw_type="std", ax=None):
+def cf_bandwidth_plot(phi, bw_type="std", ax=None, **plot_kwargs):
     """Each dictionary element determines a point on a plot of that element's
     bandwidth vs its center frequency."""
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot(111)
     centers, bandwidths = get_cf_and_bandwidth(phi, bw_type=bw_type)
-    ax.plot(centers, bandwidths, 'b.')
+    if "linestyle" not in plot_kwargs:
+        plot_kwargs["linestyle"] = "None"
+    if "marker" not in plot_kwargs:
+        plot_kwargs["marker"] = "."
+    ax.plot(centers, bandwidths, **plot_kwargs)
     ax.set_xlabel('Center frequency (Hz)')
     ax.set_xscale('log')
     ax.set_ylabel('Bandwidth (Hz)')
@@ -117,7 +121,7 @@ def get_cf_and_bandwidth(phi, sample_rate=16000, bw_type="std"):
     if bw_type == "std":
         bandwidths = np.sqrt(spectra @ freqs**2 / spectra.sum(1) - centers**2)
     elif bw_type == "length":
-        bandwidths = np.array([sample_rate/len(trim(kernel, 0.99)) for kernel in phi])
+        bandwidths = np.array([sample_rate/len(trim(kernel, 0.1)) for kernel in phi])
     elif bw_type == "3db":
         peaks = np.max(spectra, axis=1)
         masks = spectra > 0.5*peaks[:, None]
@@ -152,12 +156,12 @@ def tiled_plot(stims, trim=False):
     plt.setp([a.get_yticklabels() for a in f.axes[:-1]], visible=False)
 
 
-def trim(kernel, threshold=0.999):
-    """Trims kernel to keep a fraction of the total power given by threshold.
+def trim(kernel, threshold=0.1):
+    """Trims kernel to keep a fraction of the total power given by 1-threshold.
     The center of the returned kernel is the point of the original kernel
     at which the cumulative power crosses 0.5. Expects normalized kernel."""
     if not isinstance(threshold, float):
-        threshold = 0.999
+        threshold = 0.1
     squares = kernel**2
     unfolded_cumulative = np.cumsum(squares)
     midpoint = np.argmax(unfolded_cumulative > 0.5)
@@ -175,13 +179,22 @@ def trim(kernel, threshold=0.999):
     folded = first + latter
 
     cumulative = np.cumsum(folded)
-    boundary = np.argmax(cumulative > threshold)
+    boundary = np.argmax(cumulative > 1-threshold)
     if boundary < 1:
         boundary = 1
     start = max(0, midpoint-boundary)
     end = min(len(kernel), midpoint+boundary)
 
     return kernel[start:end]
+
+
+def trim_from_left(kernel, threshold=0.1):
+    if not isinstance(threshold, float):
+        threshold = 0.1
+    squares = kernel**2
+    cumulative = np.cumsum(squares)
+    first = np.argmax(cumulative > threshold)
+    return kernel[first:]
 
 
 def show_spectra(phi):

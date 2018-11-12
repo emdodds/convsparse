@@ -58,7 +58,8 @@ class CausalConvSparseNet(csn.ConvSparseNet):
                 optimizer.step()
             histories["loss"].append(losses)
             histories["l1"].append(l1_means)
-            acts[:, :, tt:tt+self.kernel_size] = temp_acts.detach()
+            acts[:, :, tt:tt+self.kernel_size] \
+                = temp_acts.detach()[:, :, :l_signal-tt] # discard padding
             resid[:, :, tt:tt+self.kernel_size] -= \
                 torch.matmul(acts[:, :, tt], self.weights).detach()
             print(tt)
