@@ -45,19 +45,21 @@ else:
     device = torch.device(args.device)
 
 if config["model"] == "csn":
-    net = csn.ConvSparseNet(inference_rate=50, n_iter=100,
+    net = csn.ConvSparseNet(n_kernel=config["n_kernel"],
                             lam=config["sparseness_parameter"],
                             initialization="minirandom", seed_length=100,
                             kernel_size=config["kernel_size"],
                             device=device)
 elif config["model"] == "causal":
-    net = causalMP.CausalMP(device=device,
+    net = causalMP.CausalMP(n_kernel=config["n_kernel"],
+                            device=device,
                             initialization="minirandom", seed_length=800,
                             kernel_size=config["kernel_size"],
                             lam=config["sparseness_parameter"],
                             normed_thresh=config["normed_thresh"])
 elif config["model"] == "mp":
-    net = mp.MPNet(device=device, seed_length=100, n_iter=2000, 
+    net = mp.MPNet(n_kernel=config["n_kernel"],
+                   device=device, seed_length=100, n_iter=2000,
                    lam=config["sparseness_parameter"],
                    initialization="minirandom",
                    kernel_size=config["kernel_size"])

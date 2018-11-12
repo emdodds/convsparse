@@ -40,22 +40,22 @@ class ConvSparseNet():
 
         weights = self.initial_filters(initialization, seed_length)
         weights = weights.reshape([1, n_kernel, kernel_size])
-        self.weights = torch.tensor(weights, dtype=dtype, 
+        self.weights = torch.tensor(weights, dtype=dtype,
                                     device=self.device, requires_grad=True)
 
     def initial_filters(self, initialization="minirandom", seed_length=100):
         """If 1D, Return either a set of gammachirp filters or random filters,
         with seed_length iid normal samples in the middle surrounded by 0s,
         normalized. Otherwise return Gaussian noise, not normalized."""
-        if initialization == "gammachirp":
+        if "gammachirp" in initialization:
             gammachirps = np.zeros([self.n_kernel, self.kernel_size])
             freqs = np.logspace(np.log10(100), np.log10(6000), self.n_kernel)
             times = np.linspace(0, self.kernel_size/16000,
                                 self.kernel_size)
             for ii in range(self.n_kernel):
-                gammachirps[ii] = dcGC(times, freqs[ii])
+                gammachirps[ii] = utils.dcGC(times, freqs[ii])
             filters = gammachirps
-        elif initialization == "minifourier":
+        elif "fourier" in initialization:
             timepoints = np.arange(self.kernel_size)
             frequencies = [(nn+1)/(2*seed_length) for nn in range(self.n_kernel)]
             filters = [np.sin(2*np.pi*freq*timepoints) for freq in frequencies]
@@ -65,7 +65,7 @@ class ConvSparseNet():
             filters[:, :start] = 0
             filters[:, end:] = 0
             filters -= filters.mean(axis=1, keepdims=True)
-        elif initialization == "minirandom":
+        elif "minirandom" in initialization:
             filters = np.random.randn(self.n_kernel, self.kernel_size)
             start = int(self.kernel_size/2 - seed_length/2)
             end = start + seed_length
@@ -73,15 +73,21 @@ class ConvSparseNet():
             filters[:, end:] = 0
         else:
             raise ValueError("Unsupported initialization")
+        if "_r" in initialization:
+            filters = np.flip(filters, axis=-1).copy()
         filters /= np.sqrt(np.sum(filters**2, axis=1))[:, None]
         return filters.reshape(filters.shape+(1,))
 
+    def mse(self, signal, recon, acts):
+        padded_signal = \
+            torch.cat([signal, torch.zeros([signal.shape[0], 1,
+                                            self.kernel_size-1],
+                                           device=self.device)],
+                      dim=2)
+        return torch.mean((padded_signal-recon)**2)
+
     def loss(self, signal, recon, acts):
-        padding = torch.zeros(list(signal.shape[:-1]) +
-                              [recon.shape[-1] - signal.shape[-1]],
-                              device=self.device)
-        signal = torch.cat([signal, padding], dim=-1)
-        mse = torch.mean((signal-recon)**2)
+        mse = self.mse(signal, recon, acts)
         l1loss = torch.mean(torch.abs(acts))
         return torch.add(mse, self.lam*l1loss)
 
@@ -202,6 +208,42 @@ class ConvSparseNet():
         print("Signal-noise ratio: {:f} dB".format(utils.snr(padded_signal, recon)))
         return acts, meta
 
+    def evaluate(self, test_set):
+        with torch.no_grad():
+            everything = self._evaluate(test_set)
+        return everything
+
+    def _evaluate(self, test_set):
+        n_signal = len(test_set)
+        n_batches = int(n_signal/self.batch_size)
+        if n_batches != n_signal/self.batch_size:
+            n_batches += 1
+        errors = []
+        l1means = []
+        counts = []
+        for bb in range(n_batches):
+            signals = test_set[self.batch_size*bb:self.batch_size*(bb+1)]
+            acts, meta = self.infer(signals)
+            recon = self.reconstruction(acts)
+            normed_error = self.mse(signals, recon, acts)/torch.mean(signals**2)
+            errors.append(normed_error.detach().cpu().numpy())
+            l1means.append(torch.mean(torch.abs(acts)).detach().cpu().numpy())
+            counts.append(np.count_nonzero(acts.detach().cpu().numpy())
+                          / np.prod(signals.shape))
+            print("Finished batch {} of {}".format(bb+1, n_batches))
+        cat_errors = np.array(errors)
+        cat_l1 = np.array(l1means)
+        cat_counts = np.array(counts)
+
+        results = {}
+        results["error"] = np.mean(cat_errors)
+        results["error_std"] = np.std(cat_errors)
+        results["l1"] = np.mean(cat_l1)
+        results["l1_std"] = np.std(cat_l1)
+        results["count"] = np.mean(cat_counts)
+        results["count_std"] = np.std(cat_counts)
+        return results
+
     def revcorr(self, nstims=10, delay=100):
         RFs = np.zeros((self.n_kernel, self.kernel_size+delay))
         spikecounts = np.zeros(self.nunits)
@@ -222,30 +264,3 @@ class ConvSparseNet():
         weights = weights.reshape([1, self.n_kernel, self.kernel_size])
         self.weights = torch.tensor(weights, dtype=dtype,
                                     device=self.device, requires_grad=True)
-
-    # def fast_sort(self, measure="L0", plot=False, savestr=None):
-    #     """Sorts filters by moving average usage of specified type, or by center frequency.
-    #     Options for measure: L0, L1, f. L0 by default."""
-    #     if measure == "f" or measure == "frequency":
-    #         usages, _ = self.get_cf_and_bandwidth()
-    #     elif measure == "L1":
-    #         usages = self.L1acts
-    #     else:
-    #         usages = self.L0acts
-    #     sorter = np.argsort(usages)
-    #     self.sort(usages, sorter, plot, savestr)
-    #     return usages[sorter]
-
-    # def sort(self, usages, sorter, plot, savestr=None):
-    #     self.weights = self.weights[sorter]
-    #     self.L0acts = self.L0acts[sorter]
-    #     self.L1acts = self.L1acts[sorter]
-    #     self.L2acts = self.L2acts[sorter]
-    #     if plot:
-    #         plt.figure()
-    #         plt.plot(usages[sorter])
-    #         plt.title('L0 Usage')
-    #         plt.xlabel('Dictionary index')
-    #         plt.ylabel('Fraction of stimuli')
-    #         if savestr is not None:
-    #             plt.savefig(savestr, format='png', bbox_inches='tight')

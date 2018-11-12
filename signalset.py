@@ -3,6 +3,7 @@ from scipy.io import wavfile
 from scipy import signal as scisig
 import numpy as np
 import matplotlib.pyplot as plt
+import utils
 
 
 def snr(signal, recon):
@@ -38,12 +39,14 @@ class SignalSet:
                  min_length=800,
                  seg_length=80000,
                  all_in_memory=True,
-                 norm_factor=500):
+                 norm_factor=500,
+                 split=None):
         self.sample_rate = sample_rate
         self.min_length = min_length
         self.seg_length = seg_length
         self.all_in_memory = all_in_memory
         self.norm_factor = norm_factor
+        self.split = split
         if isinstance(data, str):
             self.load_from_folder(data)
         else:
@@ -74,7 +77,7 @@ class SignalSet:
             return
         self.data = []
         for ff in files:
-            if ff.endswith('.wav'):
+            if self._check_filename(ff):
                 file = os.path.join(folder, ff)
                 if self.all_in_memory:
                     signal = self.load_file(file)
@@ -85,6 +88,13 @@ class SignalSet:
         print("Found ", self.ndata, " files")
         if cache and self.all_in_memory:
             np.save(os.path.join(folder, 'cache.npy'), self.data)
+
+    def _check_filename(self, filename):
+        """True iff the file ends in .wav and is in the (test/train) split if specified."""
+        condition = filename.endswith('.wav')
+        if self.split is not None:
+            condition = condition and self.split in filename
+        return condition
 
     def rand_stim(self):
         """Get one random signal."""
@@ -114,52 +124,14 @@ class SignalSet:
     def tiled_plot(self, stims, trim=False):
         """Tiled plots of the given signals. Zeroth index is which signal.
         Kind of slow, expect about 10s for 100 plots."""
-        nstim = stims.shape[0]
-        plotrows = int(np.sqrt(nstim))
-        plotcols = int(np.ceil(nstim/plotrows))
-        f, axes = plt.subplots(plotrows, plotcols,
-                               sharex=(not trim), sharey=True)
-        for ii in range(nstim):
-            this_stim = stims[ii]
-            if trim:
-                this_stim = self.trim(this_stim, threshold=trim)
-            axes.flatten()[ii].plot(this_stim)
-        f.subplots_adjust(hspace=0, wspace=0)
-        plt.setp([a.get_xticklabels() for a in f.axes[:-1]], visible=False)
-        plt.setp([a.get_yticklabels() for a in f.axes[:-1]], visible=False)
+        utils.tiled_plot(stims, trim=trim)
 
     def trim(self, kernel, threshold=0.999):
         """Trims kernel to keep a fraction of the total power given by threshold.
         The center of the returned kernel is the point of the original kernel
         at which the cumulative power crosses 0.5. Expects normalized kernel."""
-        if not isinstance(threshold, float):
-            threshold = 0.999
-        squares = kernel**2
-        unfolded_cumulative = np.cumsum(squares)
-        midpoint = np.argmax(unfolded_cumulative > 0.5)
-        if midpoint == 0 or midpoint == len(kernel):
-            return kernel
-
-        first = squares[:midpoint][::-1]
-        latter = squares[midpoint:]
-        l_first = len(first)
-        l_latter = len(latter)
-        if l_first > l_latter:
-            latter = np.concatenate([latter, np.zeros([l_first-l_latter])])
-        elif l_latter > l_first:
-            first = np.concatenate([first, np.zeros([l_latter-l_first])])
-        folded = first + latter
-
-        cumulative = np.cumsum(folded)
-        boundary = np.argmax(cumulative > threshold)
-        if boundary < 1:
-            boundary = 1
-        start = max(0, midpoint-boundary)
-        end = min(len(kernel), midpoint+boundary)
-
-        return kernel[start:end]
+        return utils.trim(kernel, threshold=threshold)
 
     def show_spectra(self, phi):
-        """Show a tiled plot of the power spectra of the current dictionary."""
-        spectra = np.square(np.abs(np.fft.rfft(phi, axis=1)))
-        self.tiled_plot(spectra)
+        """Show a tiled plot of the power spectra of the given dictionary."""
+        utils.show_spectra(phi)

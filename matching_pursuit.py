@@ -8,9 +8,10 @@ dtype = torch.float32
 
 class MPNet(convsparsenet.ConvSparseNet):
 
-    def __init__(self, **kwargs):
+    def __init__(self, adjust_thresholds=True, **kwargs):
         convsparsenet.ConvSparseNet.__init__(self, **kwargs)
         self.thresh = torch.ones(self.n_kernel, device=self.device)*self.lam
+        self.adjust_thresholds = adjust_thresholds
 
     def infer(self, signal):
         with torch.no_grad():
@@ -70,13 +71,14 @@ class MPNet(convsparsenet.ConvSparseNet):
 
     def extra_updates(self, acts, meta):
         """Lower thresholds for dead units."""
-        L1_means = torch.mean(torch.abs(acts), dim=-1)
-        L1_means = torch.mean(L1_means, dim=0)
-        highest = torch.max(L1_means)
-        too_low = L1_means < highest/10
-        self.thresh[too_low] *= 0.95
-        plenty = L1_means > 0.5*highest
-        self.thresh[plenty] = self.lam
+        if self.adjust_thresholds:
+            L1_means = torch.mean(torch.abs(acts), dim=-1)
+            L1_means = torch.mean(L1_means, dim=0)
+            highest = torch.max(L1_means)
+            too_low = L1_means < highest/10
+            self.thresh[too_low] *= 0.95
+            plenty = L1_means > 0.5*highest
+            self.thresh[plenty] = self.lam
 
     def loss(self, signal, recon, acts):
         padded_signal = \

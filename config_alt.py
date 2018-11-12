@@ -5,24 +5,26 @@ import pathlib
 parser = argparse.ArgumentParser()
 parser.add_argument('--load', default=None, type=str)
 parser.add_argument('--seg_length', default=20000, type=int)
-parser.add_argument('--lam', default=0.8, type=float)
+parser.add_argument('--lam', default=0.1, type=float)
 parser.add_argument('--lr', default=0.01, type=float)
 parser.add_argument('--change_lr', default=1000, type=int)
-parser.add_argument('--bs', default=1, type=int)
+parser.add_argument('--bs', default=4, type=int)
 parser.add_argument('--ks', default=800, type=int)
-parser.add_argument('--model', default="causal", type=str)
+parser.add_argument('--model', default="mp", type=str)
 parser.add_argument('--optim', default='Adam', type=str)
 parser.add_argument('--nthresh', default=0, type=float)
+parser.add_argument('--n_kernel', default=20, type=int)
 args = parser.parse_args()
 
 # BASE_DIR = "/mnt/c/Users/Eric/Documents/Berkeley/Research/Neuroscience/Sparse coding/"
 BASE_DIR = "/home/edodds/"
 EXP_DIR = BASE_DIR + "convsparse/Experiments/" #/home/edodds/convsparse/Experiments/"
-EXP_SUBDIR = EXP_DIR + "{}timit_lam{}_lr{}_ks{}-{}-000".format(args.model,
-                                                               args.lam,
-                                                               args.lr,
-                                                               args.ks,
-                                                               args.nthresh)
+EXP_SUBDIR = EXP_DIR + "{}timit_lam{}_lr{}_ks{}-nt{}-nk{}-000".format(args.model,
+                                                                      args.lam,
+                                                                      args.lr,
+                                                                      args.ks,
+                                                                      args.nthresh,
+                                                                      args.n_kernel)
 
 if args.load is not None:
     with open(args.load, 'r') as fh:
@@ -47,7 +49,8 @@ config.update({"data_folder": DATA_DIR,#"/home/edodds/Data/TIMIT/",
                "kernel_size": args.ks,
                "signal_normalization": 0,
                "divide_out_signal_power": True,
-               "normed_thresh": args.nthresh})
+               "normed_thresh": args.nthresh,
+               "n_kernel": args.n_kernel})
 
 pathlib.Path(EXP_SUBDIR).mkdir(parents=True, exist_ok=True)
 json_file = EXP_SUBDIR+"/config.json"

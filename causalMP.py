@@ -38,7 +38,8 @@ class CausalMP(csn.ConvSparseNet):
                            requires_grad=False)
         resid = torch.cat([signal, torch.zeros([batch_size,
                                                self.kernel_size-1],
-                                               device=self.device)],
+                                               device=self.device,
+                                               dtype=dtype)],
                           dim=1)
 
         weights = self.weights.detach().reshape(self.n_kernel, -1)
@@ -67,12 +68,7 @@ class CausalMP(csn.ConvSparseNet):
                       "reconstruction": padded_signal - resid}
 
     def loss(self, signal, recon, acts):
-        padded_signal = \
-            torch.cat([signal, torch.zeros([signal.shape[0], 1,
-                                            self.kernel_size-1],
-                                           device=self.device)],
-                      dim=2)
-        return torch.mean((padded_signal-recon)**2)
+        return self.mse(signal, recon, acts)
 
     def extra_updates(self, acts, meta):
         self.masks = self.get_masks()
