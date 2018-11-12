@@ -67,6 +67,6 @@ class CausalConvSparseNet(csn.ConvSparseNet):
 
     def pad_to_kernel_size(self, segment, batch_size):
         return torch.cat([segment,
-                          torch.zeros([batch_size, 1,
+                          torch.zeros([batch_size, self.n_kernel,
                                        self.kernel_size-segment.shape[-1]],
                                       device=self.device, dtype=dtype)])
