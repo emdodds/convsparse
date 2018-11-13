@@ -38,10 +38,13 @@ class ConvSparseNet():
         self.lam = lam
         self.device = device
 
+        self.weights = self.get_initial_weights(initialization, seed_length)
+
+    def get_initial_weights(self, initialization, seed_length):
         weights = self.initial_filters(initialization, seed_length)
         weights = weights.reshape([1, n_kernel, kernel_size])
-        self.weights = torch.tensor(weights, dtype=dtype,
-                                    device=self.device, requires_grad=True)
+        return torch.tensor(weights, dtype=dtype,
+                            device=self.device, requires_grad=True)
 
     def initial_filters(self, initialization="minirandom", seed_length=100):
         """If 1D, Return either a set of gammachirp filters or random filters,
@@ -130,13 +133,8 @@ class ConvSparseNet():
               learning_rate=0.01, post_step_loss=False,
               optimizer='SGD', step_count=0,
               divide_out_signal_power=False):
-        if optimizer == "SGD":
-            trainer = torch.optim.SGD([self.weights], lr=learning_rate)
-        elif optimizer == "momentum":
-            trainer = torch.optim.SGD([self.weights], lr=learning_rate,
-                                      momentum=0.9, nesterov=True)
-        elif optimizer == "Adam":
-            trainer = torch.optim.Adam([self.weights], lr=learning_rate)
+        trainer = self.get_optimizer(learning_rate=learning_rate,
+                                     optimizer=optimizer)
 
         losses = []
         current_time = time.time()
@@ -157,9 +155,7 @@ class ConvSparseNet():
 
             self.extra_updates(acts, meta)
 
-            with torch.no_grad():
-                self.weights /= torch.norm(self.weights, p=2,
-                                           dim=-1, keepdim=True)
+            self.normalize_weights()
 
             loss_number = training_loss.item()
             new_time = time.time()
@@ -175,6 +171,22 @@ class ConvSparseNet():
                 print(f"loss on same batch after step: {training_loss.item():f}")
 
         return losses
+
+    def normalize_weights(self):
+        with torch.no_grad():
+            self.weights /= torch.norm(self.weights, p=2,
+                                       dim=-1, keepdim=True)
+
+    def get_optimizer(self, learning_rate=0.01, optimizer="SGD"):
+        if optimizer == "SGD":
+            return torch.optim.SGD([self.weights], lr=learning_rate)
+        elif optimizer == "momentum":
+            return torch.optim.SGD([self.weights], lr=learning_rate,
+                                   momentum=0.9, nesterov=True)
+        elif optimizer == "Adam":
+            return torch.optim.Adam([self.weights], lr=learning_rate)
+        else:
+            raise ValueError(f"Optimizer {optimizer} not supported")
 
     def extra_updates(self, acts, meta):
         pass

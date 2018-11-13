@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import convsparsenet
+import utils
 
 dtype = torch.float32
 
@@ -87,3 +88,57 @@ class MPNet(convsparsenet.ConvSparseNet):
                                            device=self.device)],
                       dim=2)
         return torch.mean((padded_signal-recon)**2)
+
+
+class Growing_MPNet(MPNet):
+
+    def get_weights_tensor(self):
+        self.kernel_size = np.max([ww.shape[-1] for ww in self.weights])
+        left_pad = int(self.kernel_size/10)
+        self.kernel_size = int(self.kernel_size*1.2)
+        tensor = torch.zeros([[1, self.n_kernel, self.kernel_size]])
+        for ii in range(self.n_kernel):
+            tensor[:, ii, left_pad:left_pad+self.weights[ii].shape[-1]] = \
+                self.weights[ii]
+        return tensor
+
+    def infer(self, signal):
+        temp = self.weights
+        try:
+            self.weights = self.get_weights_tensor()
+            MPNet.infer(self, signal)
+        except Exception as ee:
+            self.weights = temp
+            raise ee
+        self.weights = temp
+
+    def extra_updates(self, acts, meta):
+        """Trim weight vectors"""
+        weights = [utils.trim(self.weights[0, ii].detach().cpu().numpy())]
+        self.weights = [torch.tensor(ww, dtype=dtype,
+                                     device=self.device,
+                                     requires_grad=True) for ww in weights]
+
+    def get_initial_weights(self, initialization, seed_length):
+        if seed_length != self.kernel_size:
+            raise ValueError("Seed length should match kernel length for growing implementation.")
+        weights = self.initial_filters(initialization, seed_length)
+        return [torch.tensor(ww, dtype=dtype,
+                             device=self.device,
+                             requires_grad=True) for ww in weights]
+
+    def normalize_weights(self):
+        with torch.no_grad():
+            self.weights = [torch.norm(ww, p=2, dim=-1, keepdim=True)
+                            for ww in self.weights]
+
+    def get_optimizer(self, learning_rate=0.01, optimizer="SGD"):
+        if optimizer == "SGD":
+            return torch.optim.SGD(self.weights, lr=learning_rate)
+        elif optimizer == "momentum":
+            return torch.optim.SGD(self.weights, lr=learning_rate,
+                                   momentum=0.9, nesterov=True)
+        elif optimizer == "Adam":
+            return torch.optim.Adam(self.weights, lr=learning_rate)
+        else:
+            raise ValueError(f"Optimizer {optimizer} not supported")

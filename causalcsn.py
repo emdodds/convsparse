@@ -43,26 +43,24 @@ class CausalConvSparseNet(csn.ConvSparseNet):
             optimizer = torch.optim.SGD([temp_acts], lr=self.inference_rate)
             if tt > l_signal - self.kernel_size:
                 # pad with frozen zeros
-                print("padding")
                 temp_acts = self.pad_to_kernel_size(temp_acts, batch_size)
-            losses = []
-            l1_means = []
+            # losses = []
+            # l1_means = []
             for _ in range(self.n_iter):
                 optimizer.zero_grad()
                 recon = self.reconstruction(temp_acts)
                 loss = self.loss(segment[:, :, :self.kernel_size],
                                  recon, temp_acts)
                 loss.backward()
-                losses.append(loss.item())
-                l1_means.append(torch.mean(torch.abs(temp_acts)).item())
+                # losses.append(loss.item())
+                # l1_means.append(torch.mean(torch.abs(temp_acts)).item())
                 optimizer.step()
-            histories["loss"].append(losses)
-            histories["l1"].append(l1_means)
+            # histories["loss"].append(losses)
+            # histories["l1"].append(l1_means)
             acts[:, :, tt:tt+self.kernel_size] \
                 = temp_acts.detach()[:, :, :l_signal-tt] # discard padding
             resid[:, :, tt:tt+self.kernel_size] -= \
-                torch.matmul(acts[:, :, tt], self.weights).detach()
-            print(tt)
+                torch.matmul(acts[:, :, tt], self.weights).detach().transpose(0, 1)
 
         return acts, histories
 
