@@ -22,7 +22,7 @@ def get_rate(schedule, step):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--c', default=None, type=str)
-parser.add_argument('--device', default="cpu", type=str)
+parser.add_argument('--device', default="gpu", type=str)
 args = parser.parse_args()
 
 from config import config
@@ -63,6 +63,14 @@ elif config["model"] == "mp":
                    lam=config["sparseness_parameter"],
                    initialization="minirandom",
                    kernel_size=config["kernel_size"])
+elif config["model"] == "growing":
+    net = mp.Growing_MPNet(trim_threshold=config["normed_thresh"],
+                           n_kernel=config["n_kernel"],
+                           device=device, n_iter=2000,
+                           lam=config["sparseness_parameter"],
+                           initialization="minirandom",
+                           kernel_size=config["kernel_size"],
+                           seed_length=config["kernel_size"])
 else:
     raise ValueError("Unsupported model specifiction: {}".format(config["model"]))
 

@@ -92,6 +92,10 @@ class MPNet(convsparsenet.ConvSparseNet):
 
 class Growing_MPNet(MPNet):
 
+    def __init__(self, trim_threshold=0.05, **kwargs):
+        self.trim_threshold = trim_threshold
+        MPNet.__init__(self, **kwargs)
+
     def get_weights_tensor(self):
         self.kernel_size = np.max([ww.shape[-1] for ww in self.weights])
         left_pad = int(self.kernel_size/10)
@@ -114,7 +118,8 @@ class Growing_MPNet(MPNet):
 
     def extra_updates(self, acts, meta):
         """Trim weight vectors"""
-        weights = [utils.trim(self.weights[0, ii].detach().cpu().numpy())]
+        weights = [utils.trim(self.weights[0, ii].detach().cpu().numpy(),
+                              threshold=self.trim_threshold)]
         self.weights = [torch.tensor(ww, dtype=dtype,
                                      device=self.device,
                                      requires_grad=True) for ww in weights]
