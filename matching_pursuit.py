@@ -161,19 +161,26 @@ class Growing_MPNet(MPNet):
                                           requires_grad=True) for ww in weights]
         self.weights = self.get_weights_tensor()
 
-    def trim_and_pad_kernel(self, kernel_before):
+    def trim_and_pad_kernel(self, kernel_before, pad_factor=1.2):
         """Trim to threshold.
         Zero pad on each side by 10% of kernel length."""
-        kernel = utils.trim(kernel_before.detach().cpu().numpy(),
-                            threshold=self.trim_threshold)
-        size = kernel.shape[-1]
-        pad_length = max(1, int(size/10))
-        kernel = torch.cat([torch.zeros([pad_length],
-                                        device=self.device, dtype=dtype),
-                            torch.tensor(kernel, device=self.device,
-                                         dtype=dtype),
-                            torch.zeros([pad_length],
-                                        device=self.device, dtype=dtype)])
+        start, end = utils.trim_bounds(kernel_before.detach().cpu().numpy(),
+                                       threshold=self.trim_threshold)
+        old_padded_size = kernel_before.shape[-1]
+        new_size = end-start
+        new_padded_size = int(pad_factor * new_size)
+        if new_padded_size > old_padded_size:
+            kernel = torch.zeros([new_padded_size],
+                                 device=self.device, dtype=dtype)
+            left = int((new_padded_size - old_padded_size)/2)
+            kernel[left:left+old_padded_size] = kernel_before
+        elif new_padded_size < old_padded_size:
+            left = int((old_padded_size - new_padded_size)/2)
+            left = max(start, left)
+            kernel = kernel_before[left:left+new_padded_size]
+        else:
+            kernel = kernel_before
+
         return kernel
 
     def get_initial_weights(self, initialization, seed_length):

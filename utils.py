@@ -156,10 +156,8 @@ def tiled_plot(stims, trim_thresh=None):
     plt.setp([a.get_yticklabels() for a in f.axes[:-1]], visible=False)
 
 
-def trim(kernel, threshold=0.1):
-    """Trims kernel to keep a fraction of the total power given by 1-threshold.
-    The center of the returned kernel is the point of the original kernel
-    at which the cumulative power crosses 0.5. Expects normalized kernel."""
+def trim_bounds(kernel, threshold=0.1):
+
     if not isinstance(threshold, float):
         threshold = 0.1
     squares = kernel**2
@@ -185,8 +183,14 @@ def trim(kernel, threshold=0.1):
     start = max(0, midpoint-boundary)
     end = midpoint+boundary
 
-    return kernel[start:end]
+    return start, end
 
+def trim(kernel, threshold=0.1):
+    """Trims kernel to keep a fraction of the total power given by 1-threshold.
+    The center of the returned kernel is the point of the original kernel
+    at which the cumulative power crosses 0.5. Expects normalized kernel."""
+    start, end = trim_bounds(kernel, threshold=threshold)
+    return kernel[start:end]
 
 def trim_from_left(kernel, threshold=0.1):
     if not isinstance(threshold, float):
