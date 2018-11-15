@@ -1,3 +1,4 @@
+import time
 import numpy as np
 import torch
 import torch.nn as nn
@@ -96,54 +97,107 @@ class Growing_MPNet(MPNet):
         self.trim_threshold = trim_threshold
         MPNet.__init__(self, **kwargs)
 
-    def get_weights_tensor(self):
-        self.kernel_size = np.max([ww.shape[-1] for ww in self.weights])
-        left_pad = int(self.kernel_size/10)
-        self.kernel_size = int(self.kernel_size*1.2)
-        tensor = torch.zeros([[1, self.n_kernel, self.kernel_size]])
-        for ii in range(self.n_kernel):
-            tensor[:, ii, left_pad:left_pad+self.weights[ii].shape[-1]] = \
-                self.weights[ii]
-        return tensor
+    def train(self, data, n_steps=1000,
+              learning_rate=0.01, post_step_loss=False,
+              optimizer='SGD', step_count=0,
+              divide_out_signal_power=False):
 
-    def infer(self, signal):
-        temp = self.weights
-        try:
-            self.weights = self.get_weights_tensor()
-            MPNet.infer(self, signal)
-        except Exception as ee:
-            self.weights = temp
-            raise ee
-        self.weights = temp
+        losses = []
+        current_time = time.time()
+        for step in range(n_steps):
+            trainer = self.get_optimizer(learning_rate=learning_rate,
+                                         optimizer=optimizer)
+            trainer.zero_grad()
+            batch = data.get_batch(batch_size=self.batch_size)
+            batch = torch.tensor(batch, device=self.device, dtype=dtype)
+            batch = batch.reshape([self.batch_size, 1, -1])
+
+            acts, meta = self.infer(batch)
+            recon = self.reconstruction(acts)
+            training_loss = self.loss(batch, recon, acts)
+            if divide_out_signal_power:
+                training_loss /= torch.var(batch)
+            training_loss.backward()
+            trainer.step()
+
+            self.extra_updates(acts, meta)
+
+            loss_number = training_loss.item()
+            new_time = time.time()
+            elapsed = new_time - current_time
+            current_time = new_time
+            print(f"step: {(step + step_count):5d}   "
+                  f"loss: {loss_number:f}    elapsed: {elapsed:f} sec")
+            losses.append(loss_number)
+
+        return losses
+
+    def get_weights_tensor(self):
+        self.kernel_size = int(np.max([ww.shape[-1] for ww in self.weights_list]))
+        tensor = torch.zeros([1, self.n_kernel, self.kernel_size],
+                             dtype=dtype, device=self.device)
+        padded_weights = []
+        for ii in range(self.n_kernel):
+            padw = torch.cat([self.weights_list[ii],
+                              torch.zeros([self.kernel_size -
+                                           self.weights_list[ii].shape[-1]],
+                                          device=self.device, dtype=dtype)])
+            padded_weights.append(padw)
+        tensor = torch.stack(padded_weights)
+        return tensor.reshape([1, self.n_kernel, -1])
 
     def extra_updates(self, acts, meta):
-        """Trim weight vectors"""
-        weights = [utils.trim(self.weights[0, ii].detach().cpu().numpy(),
-                              threshold=self.trim_threshold)]
-        self.weights = [torch.tensor(ww, dtype=dtype,
-                                     device=self.device,
-                                     requires_grad=True) for ww in weights]
+        """Trim weight vectors and update dependent tensor.
+        Normalize before and after trimming."""
+        self.normalize_weights()
+        weights = [self.trim_and_pad_kernel(ww)
+                   for ww in self.weights_list]
+        self.weights_list = [torch.tensor(ww, dtype=dtype,
+                                          device=self.device,
+                                          requires_grad=True) for ww in weights]
+        self.normalize_weights()
+        self.weights_list = [torch.tensor(ww, dtype=dtype,
+                                          device=self.device,
+                                          requires_grad=True) for ww in weights]
+        self.weights = self.get_weights_tensor()
+
+    def trim_and_pad_kernel(self, kernel_before):
+        """Trim to threshold.
+        Zero pad on each side by 10% of kernel length."""
+        kernel = utils.trim(kernel_before.detach().cpu().numpy(),
+                            threshold=self.trim_threshold)
+        size = kernel.shape[-1]
+        pad_length = max(1, int(size/10))
+        kernel = torch.cat([torch.zeros([pad_length],
+                                        device=self.device, dtype=dtype),
+                            torch.tensor(kernel, device=self.device,
+                                         dtype=dtype),
+                            torch.zeros([pad_length],
+                                        device=self.device, dtype=dtype)])
+        return kernel
 
     def get_initial_weights(self, initialization, seed_length):
         if seed_length != self.kernel_size:
             raise ValueError("Seed length should match kernel length for growing implementation.")
         weights = self.initial_filters(initialization, seed_length)
-        return [torch.tensor(ww, dtype=dtype,
-                             device=self.device,
-                             requires_grad=True) for ww in weights]
+        weights = weights.reshape([self.n_kernel, -1])
+        self.weights_list = [torch.tensor(ww, dtype=dtype,
+                                          device=self.device,
+                                          requires_grad=True) for ww in weights]
+        return self.get_weights_tensor()
 
     def normalize_weights(self):
         with torch.no_grad():
-            self.weights = [torch.norm(ww, p=2, dim=-1, keepdim=True)
-                            for ww in self.weights]
+            self.weights_list = [ww/torch.norm(ww, p=2, dim=-1, keepdim=True)
+                                 for ww in self.weights_list]
 
     def get_optimizer(self, learning_rate=0.01, optimizer="SGD"):
         if optimizer == "SGD":
-            return torch.optim.SGD(self.weights, lr=learning_rate)
+            return torch.optim.SGD(self.weights_list, lr=learning_rate)
         elif optimizer == "momentum":
-            return torch.optim.SGD(self.weights, lr=learning_rate,
+            return torch.optim.SGD(self.weights_list, lr=learning_rate,
                                    momentum=0.9, nesterov=True)
         elif optimizer == "Adam":
-            return torch.optim.Adam(self.weights, lr=learning_rate)
+            return torch.optim.Adam(self.weights_list, lr=learning_rate)
         else:
             raise ValueError(f"Optimizer {optimizer} not supported")

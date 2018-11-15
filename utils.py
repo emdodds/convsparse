@@ -138,7 +138,7 @@ def write_sound(filename, signal, sample_rate):
     wavfile.write(filename, sample_rate, signal)
 
 
-def tiled_plot(stims, trim=False):
+def tiled_plot(stims, trim_thresh=None):
     """Tiled plots of the given signals. Zeroth index is which signal.
     Kind of slow, expect about 10s for 100 plots."""
     nstim = stims.shape[0]
@@ -148,8 +148,8 @@ def tiled_plot(stims, trim=False):
                            sharex=(not trim), sharey=True)
     for ii in range(nstim):
         this_stim = stims[ii]
-        if trim:
-            this_stim = trim(this_stim, threshold=trim)
+        if trim_thresh is not None:
+            this_stim = trim(this_stim, threshold=trim_thresh)
         axes.flatten()[ii].plot(this_stim)
     f.subplots_adjust(hspace=0, wspace=0)
     plt.setp([a.get_xticklabels() for a in f.axes[:-1]], visible=False)
@@ -183,7 +183,7 @@ def trim(kernel, threshold=0.1):
     if boundary < 1:
         boundary = 1
     start = max(0, midpoint-boundary)
-    end = min(len(kernel), midpoint+boundary)
+    end = midpoint+boundary
 
     return kernel[start:end]
 
