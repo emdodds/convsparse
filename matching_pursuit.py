@@ -161,6 +161,8 @@ class Growing_MPNet(MPNet):
                                           requires_grad=True) for ww in weights]
         self.weights = self.get_weights_tensor()
 
+        MPNet.extra_updates(self, acts, meta)
+
     def trim_and_pad_kernel(self, kernel_before, pad_factor=1.2):
         """Trim to threshold.
         Zero pad on each side by 10% of kernel length."""

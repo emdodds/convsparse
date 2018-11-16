@@ -6,20 +6,20 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--load', default=None, type=str)
 parser.add_argument('--seg_length', default=20000, type=int)
 parser.add_argument('--lam', default=0.1, type=float)
-parser.add_argument('--lr', default=0.01, type=float)
+parser.add_argument('--lr', default=1.0, type=float)
 parser.add_argument('--change_lr', default=1000, type=int)
 parser.add_argument('--bs', default=4, type=int)
 parser.add_argument('--ks', default=100, type=int)
 parser.add_argument('--model', default="growing", type=str)
 parser.add_argument('--optim', default='SGD', type=str)
-parser.add_argument('--nthresh', default=0.05, type=float)
+parser.add_argument('--nthresh', default=0.01, type=float)
 parser.add_argument('--n_kernel', default=20, type=int)
 args = parser.parse_args()
 
 # BASE_DIR = "/mnt/c/Users/Eric/Documents/Berkeley/Research/Neuroscience/Sparse coding/"
 BASE_DIR = "/home/edodds/"
 EXP_DIR = BASE_DIR + "convsparse/Experiments/" #/home/edodds/convsparse/Experiments/"
-EXP_SUBDIR = EXP_DIR + "{}timit_lam{}_lr{}_ks{}-nt{}-nk{}-000".format(args.model,
+EXP_SUBDIR = EXP_DIR + "{}timit_lam{}_lr{}_ks{}-nt{}-nk{}-001".format(args.model,
                                                                       args.lam,
                                                                       args.lr,
                                                                       args.ks,
