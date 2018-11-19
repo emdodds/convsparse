@@ -86,3 +86,6 @@ class CausalMP(csn.ConvSparseNet):
         for ind in range(self.n_kernel):
             masks[ind, int(starts[ind].item()):] = 1
         return masks
+
+class GrowingCMP(CausalMP):
+    pass

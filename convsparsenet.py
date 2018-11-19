@@ -273,6 +273,6 @@ class ConvSparseNet():
 
     def load(self, path):
         weights = np.load(path + "/weights.npy")
-        weights = weights.reshape([1, self.n_kernel, self.kernel_size])
+        weights = weights.reshape([1, self.n_kernel, -1])
         self.weights = torch.tensor(weights, dtype=dtype,
                                     device=self.device, requires_grad=True)

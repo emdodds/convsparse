@@ -164,8 +164,7 @@ class Growing_MPNet(MPNet):
         MPNet.extra_updates(self, acts, meta)
 
     def trim_and_pad_kernel(self, kernel_before, pad_factor=1.2):
-        """Trim to threshold.
-        Zero pad on each side by 10% of kernel length."""
+        """Make kernel 120% of the length it would have after trimming to threshold."""
         start, end = utils.trim_bounds(kernel_before.detach().cpu().numpy(),
                                        threshold=self.trim_threshold)
         old_padded_size = kernel_before.shape[-1]
@@ -178,7 +177,7 @@ class Growing_MPNet(MPNet):
             kernel[left:left+old_padded_size] = kernel_before
         elif new_padded_size < old_padded_size:
             left = int((old_padded_size - new_padded_size)/2)
-            left = max(start, left)
+            left = min(start, left)
             kernel = kernel_before[left:left+new_padded_size]
         else:
             kernel = kernel_before
@@ -210,3 +209,13 @@ class Growing_MPNet(MPNet):
             return torch.optim.Adam(self.weights_list, lr=learning_rate)
         else:
             raise ValueError(f"Optimizer {optimizer} not supported")
+
+    def load(self, path):
+        MPNet.load(self, path)
+        self.weights_list = [self.weights[0, ii] for ii in range(self.n_kernel)]
+        self.weights_list = [self.trim_and_pad_kernel(ww) for ww in self.weights_list]
+        self.normalize_weights()
+        self.weights_list = [torch.tensor(ww, dtype=dtype,
+                                          device=self.device,
+                                          requires_grad=True) for ww in self.weights_list]
+        self.weights = self.get_weights_tensor()
