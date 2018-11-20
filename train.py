@@ -8,6 +8,7 @@ import signalset
 import convsparsenet as csn
 import causalMP
 import matching_pursuit as mp
+from causalcsn import CausalConvSparseNet
 
 
 def get_rate(schedule, step):
@@ -50,6 +51,15 @@ if config["model"] == "csn":
                             initialization="minirandom", seed_length=100,
                             kernel_size=config["kernel_size"],
                             device=device)
+elif config["model"] == "causalcsn":
+    net = CausalConvSparseNet(n_kernel=config["n_kernel"],
+                              lam=config["sparseness_parameter"],
+                              initialization="minirandom",
+                              seed_length=config["kernel_size"],
+                              kernel_size=config["kernel_size"],
+                              device=device,
+                              inference_rate=config["inf_rate"],
+                              n_iter=config["n_iter"])
 elif config["model"] == "causal":
     net = causalMP.CausalMP(n_kernel=config["n_kernel"],
                             device=device,
@@ -62,7 +72,8 @@ elif config["model"] == "mp":
                    device=device, seed_length=100, n_iter=2000,
                    lam=config["sparseness_parameter"],
                    initialization="minirandom",
-                   kernel_size=config["kernel_size"])
+                   kernel_size=config["kernel_size"],
+                   dropout=config['dropout'])
 elif config["model"] == "growing":
     net = mp.Growing_MPNet(trim_threshold=config["normed_thresh"],
                            n_kernel=config["n_kernel"],
@@ -70,7 +81,8 @@ elif config["model"] == "growing":
                            lam=config["sparseness_parameter"],
                            initialization="minirandom",
                            kernel_size=config["kernel_size"],
-                           seed_length=config["kernel_size"])
+                           seed_length=config["kernel_size"],
+                           dropout=config['dropout'])
 else:
     raise ValueError("Unsupported model specifiction: {}".format(config["model"]))
 
@@ -89,6 +101,11 @@ except FileNotFoundError:
 
 steps_between = 10
 for tt in range(1000):
+    if config["stop_dropout"] < len(losses):
+        try:
+            net.dropout = 1.
+        except AttributeError:
+            pass
     losses += net.train(data, n_steps=steps_between,
                         learning_rate=get_rate(config["learning_schedule"],
                                                len(losses)),

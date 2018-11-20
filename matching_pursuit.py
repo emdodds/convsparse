@@ -8,12 +8,25 @@ import utils
 dtype = torch.float32
 
 
+def dropout_rows(tensor, frac_kept):
+    """Returns tensor with some rows zeroed.
+    frac_kept (rounded up) of rows are kept (not zeroed).
+    Nothing is rescaled."""
+    num_rows = tensor.shape[0]
+    num_kept = int(np.ceil(frac_kept * num_rows))
+    keep = np.random.permutation(np.arange(num_rows))[:num_kept]
+    result = torch.zeros_like(tensor)
+    result[keep] = tensor[keep]
+    return result
+
+
 class MPNet(convsparsenet.ConvSparseNet):
 
-    def __init__(self, adjust_thresholds=True, **kwargs):
+    def __init__(self, adjust_thresholds=False, dropout=1., **kwargs):
         convsparsenet.ConvSparseNet.__init__(self, **kwargs)
         self.thresh = torch.ones(self.n_kernel, device=self.device)*self.lam
         self.adjust_thresholds = adjust_thresholds
+        self.dropout = dropout
 
     def infer(self, signal):
         with torch.no_grad():
@@ -40,6 +53,7 @@ class MPNet(convsparsenet.ConvSparseNet):
 
         cond = True
         weights = self.weights.reshape([self.n_kernel, 1, -1])
+        weights = dropout_rows(weights, self.dropout)
         errors = np.zeros([self.n_iter])
         L1_means = np.zeros([self.n_iter])
         for ii in range(self.n_iter):

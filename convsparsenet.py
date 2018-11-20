@@ -42,7 +42,7 @@ class ConvSparseNet():
 
     def get_initial_weights(self, initialization, seed_length):
         weights = self.initial_filters(initialization, seed_length)
-        weights = weights.reshape([1, n_kernel, kernel_size])
+        weights = weights.reshape([1, self.n_kernel, -1])
         return torch.tensor(weights, dtype=dtype,
                             device=self.device, requires_grad=True)
 
