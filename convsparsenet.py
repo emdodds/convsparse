@@ -142,7 +142,8 @@ class ConvSparseNet():
             trainer.zero_grad()
             #self.weights.requires_grad = True
             batch = data.get_batch(batch_size=self.batch_size)
-            batch = torch.tensor(batch, device=self.device, dtype=dtype)
+            batch = torch.tensor(batch, device=self.device, dtype=dtype,
+                                 requires_grad=False)
             batch = batch.reshape([self.batch_size, 1, -1])
 
             acts, meta = self.infer(batch)

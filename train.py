@@ -23,7 +23,7 @@ def get_rate(schedule, step):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--c', default=None, type=str)
-parser.add_argument('--device', default="gpu", type=str)
+parser.add_argument('--device', default="cpu", type=str)
 args = parser.parse_args()
 
 from config import config
@@ -66,7 +66,9 @@ elif config["model"] == "causal":
                             initialization="minirandom", seed_length=800,
                             kernel_size=config["kernel_size"],
                             lam=config["sparseness_parameter"],
-                            normed_thresh=config["normed_thresh"])
+                            thresh=config["thresh"],
+                            normed_thresh=config["normed_thresh"],
+                            backprop_through_inference=config["backprop_through_inference"])
 elif config["model"] == "mp":
     net = mp.MPNet(n_kernel=config["n_kernel"],
                    device=device, seed_length=100, n_iter=2000,

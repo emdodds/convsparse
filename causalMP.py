@@ -1,33 +1,41 @@
 import numpy as np
 import torch
-import torch.nn as nn
 import convsparsenet as csn
+from convsparsenet import ConvSparseNet
 
 dtype = csn.dtype
 
 
-class CausalMP(csn.ConvSparseNet):
+class CausalMP(ConvSparseNet):
 
     def __init__(self, normed_thresh=None,
-                 mask_epsilon=None, **kwargs):
-        csn.ConvSparseNet.__init__(self, **kwargs)
-        self.thresh = self.lam
+                 mask_epsilon=None,
+                 backprop_through_inference=True,
+                 thresh=0.1,
+                 **kwargs):
+        ConvSparseNet.__init__(self, **kwargs)
+        self.thresh = thresh
         if normed_thresh is None:
             self.normed_thresh = 2/np.sqrt(self.kernel_size)
         else:
             self.normed_thresh = normed_thresh
         self.mask_epsilon = mask_epsilon or 0.01*np.sqrt(1/self.kernel_size)
         self.masks = self.get_masks()
+        self.backprop_through_inference = backprop_through_inference
 
     def infer(self, signal):
-        with torch.no_grad():
-            everything = self._infer_no_grad(signal)
+        if self.backprop_through_inference:
+            everything = self._infer(signal)
+        else:
+            with torch.no_grad():
+                everything = self._infer(signal)
         return everything
 
-    def _infer_no_grad(self, signal):
+    def _infer(self, signal):
         n_signal = signal.shape[0] if len(signal.shape) > 1 else 1
         if not isinstance(signal, torch.Tensor):
-            signal = torch.tensor(signal, device=self.device, dtype=dtype)
+            signal = torch.tensor(signal, device=self.device, dtype=dtype,
+                                  requires_grad=False)
         signal = signal.reshape([n_signal, -1])
         l_signal = signal.shape[-1]
         batch_size = signal.shape[0]
@@ -39,12 +47,13 @@ class CausalMP(csn.ConvSparseNet):
         resid = torch.cat([signal, torch.zeros([batch_size,
                                                self.kernel_size-1],
                                                device=self.device,
-                                               dtype=dtype)],
+                                               dtype=dtype,
+                                               requires_grad=False)],
                           dim=1)
 
-        weights = self.weights.detach().reshape(self.n_kernel, -1)
+        weights = self.weights.reshape(self.n_kernel, -1)
         for tt in range(l_signal):
-            segment = resid[:, tt:tt+self.kernel_size]
+            segment = resid[:, tt:tt+self.kernel_size].clone() # never backprop through residual
             dots = torch.mm(segment, torch.t(weights))
             candidates = torch.argmax(torch.abs(dots), dim=1)
             spikes = dots[torch.arange(batch_size), candidates]
@@ -56,7 +65,7 @@ class CausalMP(csn.ConvSparseNet):
             raw_condition = (abspikes > self.thresh).float()
 
             spikes = raw_condition*norm_condition*spikes
-            acts[indexer, candidates, tt] += spikes
+            acts[indexer, candidates, tt] = spikes
             resid[:, tt:tt+self.kernel_size] -= \
                 spikes[:, None]*weights[candidates, :]
 
@@ -68,7 +77,10 @@ class CausalMP(csn.ConvSparseNet):
                       "reconstruction": padded_signal - resid}
 
     def loss(self, signal, recon, acts):
-        return self.mse(signal, recon, acts)
+        if self.backprop_through_inference:
+            return ConvSparseNet.loss(self, signal, recon, acts)
+        else:
+            return self.mse(signal, recon, acts)
 
     def extra_updates(self, acts, meta):
         self.masks = self.get_masks()
@@ -87,5 +99,3 @@ class CausalMP(csn.ConvSparseNet):
             masks[ind, int(starts[ind].item()):] = 1
         return masks
 
-class GrowingCMP(CausalMP):
-    pass
